@@ -36,7 +36,7 @@ public class DistributedHighThroughputRateLimiter implements AutoCloseable {
         this.scheduler.scheduleAtFixedRate(this::publishDeltas, 0, reportInterval, TimeUnit.MILLISECONDS);
         this.executor = Executors.newVirtualThreadPerTaskExecutor();
         this.requestNumCache = CacheBuilder.newBuilder()
-                .expireAfterWrite(Duration.ofMillis(reportInterval / 2))
+                .expireAfterWrite(Duration.ofMillis(reportInterval))
                 .build(new CacheLoader<String, Long>() {
                     @Override
                     public Long load(final String key) throws Exception {
