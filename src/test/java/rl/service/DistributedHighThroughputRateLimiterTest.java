@@ -196,9 +196,8 @@ public class DistributedHighThroughputRateLimiterTest {
                     if (Objects.nonNull(t)) {
                         log.info("isAllowed() error: ", t);
                     } else {
-                        log.info("svcKey: {}, isAllowed: {}", svcKey, r);
                         final Long total = RedisClient.init().sumOfRequests(svcKey);
-                        log.info("key: {}, total: {}", svcKey, total);
+                        log.info("key: {}, total: {}, isAllowed: {}", svcKey, total, r);
                         Assertions.assertThat(r).isFalse();
                     }
                 });
@@ -229,7 +228,7 @@ public class DistributedHighThroughputRateLimiterTest {
                 });
 
 
-        TimeUnit.SECONDS.sleep(20L);
+        TimeUnit.SECONDS.sleep(9);
 
         IntStream.range(1, 9)
                 .mapToObj(n -> String.format("rl:svc0%s", n))
@@ -239,9 +238,8 @@ public class DistributedHighThroughputRateLimiterTest {
                                 if (Objects.nonNull(t)) {
                                     log.info("isAllowed() error: ", t);
                                 } else {
-                                    log.info("svcKey: {}, isAllowed: {}", svcKey, r);
                                     final Long total = RedisClient.init().sumOfRequests(svcKey);
-                                    log.info("key: {}, total: {}", svcKey, total);
+                                    log.info("key: {}, total: {}, isAllowed: {}", svcKey, total, r);
                                     Assertions.assertThat(r).isFalse();
                                 }
                             });

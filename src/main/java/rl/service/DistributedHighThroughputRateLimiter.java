@@ -1,11 +1,17 @@
 package rl.service;
 
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import io.vavr.control.Try;
 import lombok.extern.slf4j.Slf4j;
 import rl.util.RedisClient;
 
+import java.time.Duration;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadLocalRandom;
@@ -13,19 +19,37 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
 @Slf4j
-public class DistributedHighThroughputRateLimiter {
-    public final static long reportInterval = 3L;
+public class DistributedHighThroughputRateLimiter implements AutoCloseable {
+    public final static long reportInterval = 2000L;
     private final DistributedKeyValueStore kvStore;
     private final ConcurrentHashMap<String, Long> reqDeltas;
     private final ReentrantLock lock;
     private final ScheduledExecutorService scheduler;
+    private final ExecutorService executor;
+    private final LoadingCache<String, Long> requestNumCache;
 
     public DistributedHighThroughputRateLimiter(final DistributedKeyValueStore kvStore) {
         this.kvStore = kvStore;
         this.reqDeltas = new ConcurrentHashMap<>();
         this.lock = new ReentrantLock();
         this.scheduler = Executors.newScheduledThreadPool(1, Thread.ofVirtual().factory());
-        this.scheduler.scheduleAtFixedRate(this::publishDeltas, 0, reportInterval, TimeUnit.SECONDS);
+        this.scheduler.scheduleAtFixedRate(this::publishDeltas, 0, reportInterval, TimeUnit.MILLISECONDS);
+        this.executor = Executors.newVirtualThreadPerTaskExecutor();
+        this.requestNumCache = CacheBuilder.newBuilder()
+                .expireAfterWrite(Duration.ofMillis(reportInterval / 2))
+                .build(new CacheLoader<String, Long>() {
+                    @Override
+                    public Long load(final String key) throws Exception {
+                        final Long numberOfRequests = kvStore.getNumberOfRequests(key);
+                        return numberOfRequests;
+                    }
+                });
+    }
+
+    @Override
+    public void close() {
+        this.scheduler.shutdown();
+        this.executor.shutdown();
     }
 
     /**
@@ -52,8 +76,14 @@ public class DistributedHighThroughputRateLimiter {
     private void publishDeltas() {
         try {
             if (lock.tryLock(300L, TimeUnit.MILLISECONDS)) {
-                reqDeltas.forEach((key, delta) -> Try.run(() -> kvStore.incrementByAndExpire(loadKey(key), delta.intValue(), DistributedKeyValueStore.defaultTimeout)));
+                final Map<String, Long> snapshot = Map.copyOf(reqDeltas);
                 reqDeltas.clear();
+                snapshot.forEach((key, delta) -> Try.run(() -> kvStore
+                        .incrementByAndExpire(loadKey(key), delta.intValue(), DistributedKeyValueStore.defaultTimeout)
+                        .exceptionally(t -> {
+                            log.error("failed to publishDelta for key: {}", key, t);
+                            return 0;
+                        })));
             }
         } catch (InterruptedException e) {
             log.error("failed to publishDeltas", e);
@@ -65,26 +95,13 @@ public class DistributedHighThroughputRateLimiter {
         }
     }
 
-
     /**
      * increate the delta by 1 per given key in reqDeltas
      *
      * @param key
      */
     private void updateDelta(final String key) {
-        try {
-            if (lock.tryLock(300L, TimeUnit.MILLISECONDS)) {
-                final Long reqDelta = reqDeltas.getOrDefault(key, 0L);
-                reqDeltas.put(key, reqDelta + 1);
-            }
-        } catch (InterruptedException e) {
-            log.error("failed to updateDelta for key: {}", key, e);
-            throw new IllegalStateException(e);
-        } finally {
-            if (lock.isHeldByCurrentThread()) {
-                Try.run(lock::unlock);
-            }
-        }
+        reqDeltas.merge(key, 1L, Long::sum);
     }
 
     /**
@@ -98,9 +115,9 @@ public class DistributedHighThroughputRateLimiter {
     public CompletableFuture<Boolean> isAllowed(String key, int limit) {
         return CompletableFuture.supplyAsync(() -> {
             this.updateDelta(key);
-            final Long numberOfRequests = kvStore.getNumberOfRequests(key);
+            final Long numberOfRequests = Try.of(() -> this.requestNumCache.get(key)).getOrElse(0L);
             return numberOfRequests < limit;
-        });
+        }, executor);
     }
 
 

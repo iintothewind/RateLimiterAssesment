@@ -53,18 +53,38 @@ public class RedisClient {
         }
     }
 
+//    public Long incrBy(final String key, final Long delta, int expirationSeconds) {
+//        final int expiration = Math.max(expirationSeconds, 60);
+//        if (!Strings.isNullOrEmpty(key) && delta > 0) {
+//            try (final Jedis jedis = pool.getResource()) {
+//                final boolean keyExisting = jedis.exists(key);
+//                if (keyExisting) {
+//                    return jedis.incrBy(key, delta);
+//                } else {
+//                    jedis.setex(key, getTimeout(expiration), delta.toString());
+//                    return delta;
+//                }
+//            }
+//        }
+//        return 0L;
+//    }
+
+
     public Long incrBy(final String key, final Long delta, int expirationSeconds) {
+        final String INCR_EXPIRE_SCRIPT = """
+                local v = redis.call('incrby', KEYS[1], ARGV[1])
+                if v == tonumber(ARGV[1]) then
+                  redis.call('expire', KEYS[1], ARGV[2])
+                end 
+                return v
+                """;
         final int expiration = Math.max(expirationSeconds, 60);
         if (!Strings.isNullOrEmpty(key) && delta > 0) {
             try (final Jedis jedis = pool.getResource()) {
-                final boolean keyExisting = jedis.exists(key);
-                if (keyExisting) {
-                    return jedis.incrBy(key, delta);
-                } else {
-                    final long rate = jedis.incrBy(key, delta);
-                    jedis.expire(key, getTimeout(expiration));
-                    return rate;
-                }
+                final Object res = jedis.eval(INCR_EXPIRE_SCRIPT,
+                        List.of(key),
+                        List.of(delta.toString(), String.valueOf(expiration)));
+                return (Long) res;
             }
         }
         return 0L;
