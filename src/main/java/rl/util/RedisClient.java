@@ -132,4 +132,16 @@ public class RedisClient {
                 .sum();
         return sum;
     }
+
+    public Long sumOfRequests(final String key) {
+        if (!isShardKey(key)) {
+            final Long numberOfRequests = getLong(key);
+            return numberOfRequests;
+        } else {
+            final int numOfShards = getNumberOfShards(key);
+            final List<String> subKeys = IntStream.range(0, numOfShards).mapToObj(i -> String.format("%s:%s", key, i)).toList();
+            final Long sumOfRequests = sumLong(subKeys);
+            return sumOfRequests;
+        }
+    }
 }

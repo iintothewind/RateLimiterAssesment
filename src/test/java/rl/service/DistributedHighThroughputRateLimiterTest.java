@@ -38,7 +38,7 @@ public class DistributedHighThroughputRateLimiterTest {
         rateLimiter.isAllowed(svcKey, 20)
                 .whenComplete((r, t) -> {
                     if (Objects.nonNull(t)) {
-                        log.info("is allowed error: ", t);
+                        log.info("isAllowed() error: ", t);
                     } else {
                         log.info("svcKey: {}, isAllowed: {}", svcKey, r);
                         Assertions.assertThat(r).isTrue();
@@ -58,7 +58,7 @@ public class DistributedHighThroughputRateLimiterTest {
         rateLimiter.isAllowed(svcKey, 20)
                 .whenComplete((r, t) -> {
                     if (Objects.nonNull(t)) {
-                        log.info("is allowed error: ", t);
+                        log.info("isAllowed() error: ", t);
                     } else {
                         log.info("svcKey: {}, isAllowed: {}", svcKey, r);
                         Assertions.assertThat(r).isTrue();
@@ -79,7 +79,7 @@ public class DistributedHighThroughputRateLimiterTest {
             rateLimiter.isAllowed(svcKey, 10)
                     .whenComplete((r, t) -> {
                         if (Objects.nonNull(t)) {
-                            log.info("is allowed error: ", t);
+                            log.info("isAllowed() error: ", t);
                         } else {
                             if (i < 10) {
                                 Assertions.assertThat(r).isTrue();
@@ -104,7 +104,7 @@ public class DistributedHighThroughputRateLimiterTest {
             rateLimiter.isAllowed(svcKey, 5)
                     .whenComplete((r, t) -> {
                         if (Objects.nonNull(t)) {
-                            log.info("is allowed error: ", t);
+                            log.info("isAllowed() error: ", t);
                         } else {
                             log.info("svcKey: {}, isAllowed: {}", svcKey, r);
                             if (i > 10) {
@@ -129,7 +129,7 @@ public class DistributedHighThroughputRateLimiterTest {
                         rateLimiter.isAllowed(svcKey, 5)
                                 .whenComplete((r, t) -> {
                                     if (Objects.nonNull(t)) {
-                                        log.info("is allowed error: ", t);
+                                        log.info("isAllowed() error: ", t);
                                     } else {
                                         log.info("svcKey: {}, isAllowed: {}", svcKey, r);
                                         if (i > 10) {
@@ -157,7 +157,7 @@ public class DistributedHighThroughputRateLimiterTest {
                         rateLimiter.isAllowed(svcKey, 5)
                                 .whenComplete((r, t) -> {
                                     if (Objects.nonNull(t)) {
-                                        log.info("is allowed error: ", t);
+                                        log.info("isAllowed() error: ", t);
                                     } else {
                                         log.info("svcKey: {}, isAllowed: {}", svcKey, r);
                                         if (i > 10) {
@@ -181,7 +181,7 @@ public class DistributedHighThroughputRateLimiterTest {
             rateLimiter.isAllowed(svcKey, 500)
                     .whenComplete((r, t) -> {
                         if (Objects.nonNull(t)) {
-                            log.info("is allowed error: ", t);
+                            log.info("isAllowed() error: ", t);
                         } else {
                             log.info("svcKey: {}, isAllowed: {}", svcKey, r);
                             Assertions.assertThat(r).isTrue();
@@ -194,11 +194,57 @@ public class DistributedHighThroughputRateLimiterTest {
         rateLimiter.isAllowed(svcKey, 500)
                 .whenComplete((r, t) -> {
                     if (Objects.nonNull(t)) {
-                        log.info("is allowed error: ", t);
+                        log.info("isAllowed() error: ", t);
                     } else {
                         log.info("svcKey: {}, isAllowed: {}", svcKey, r);
+                        final Long total = RedisClient.init().sumOfRequests(svcKey);
+                        log.info("key: {}, total: {}", svcKey, total);
                         Assertions.assertThat(r).isFalse();
                     }
+                });
+
+        TimeUnit.SECONDS.sleep(5L);
+    }
+
+    @Test
+    @SneakyThrows
+    public void testAllowed08() {
+        RedisClient.init().shardKey("rl:svc03", 5);
+        RedisClient.init().shardKey("rl:svc07", 5);
+        IntStream.range(1, 9)
+                .mapToObj(n -> String.format("rl:svc0%s", n))
+                .parallel()
+                .forEach(svcKey -> {
+                    IntStream.range(0, 9999).forEach(i -> {
+                        rateLimiter.isAllowed(svcKey, 500)
+                                .whenComplete((r, t) -> {
+                                    if (Objects.nonNull(t)) {
+                                        log.info("isAllowed() error: ", t);
+                                    } else {
+                                        log.info("svcKey: {}, isAllowed: {}", svcKey, r);
+                                        Assertions.assertThat(r).isTrue();
+                                    }
+                                });
+                    });
+                });
+
+
+        TimeUnit.SECONDS.sleep(20L);
+
+        IntStream.range(1, 9)
+                .mapToObj(n -> String.format("rl:svc0%s", n))
+                .forEach(svcKey -> {
+                    rateLimiter.isAllowed(svcKey, 500)
+                            .whenComplete((r, t) -> {
+                                if (Objects.nonNull(t)) {
+                                    log.info("isAllowed() error: ", t);
+                                } else {
+                                    log.info("svcKey: {}, isAllowed: {}", svcKey, r);
+                                    final Long total = RedisClient.init().sumOfRequests(svcKey);
+                                    log.info("key: {}, total: {}", svcKey, total);
+                                    Assertions.assertThat(r).isFalse();
+                                }
+                            });
                 });
 
         TimeUnit.SECONDS.sleep(5L);
