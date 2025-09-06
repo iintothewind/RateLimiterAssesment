@@ -53,15 +53,6 @@ public class DistributedKeyValueStore {
      * @return the total number of requests for a key
      */
     public Long getNumberOfRequests(final String key) {
-        final boolean isShardKey = RedisClient.init().isShardKey(key);
-        if (!isShardKey) {
-            final Long numberOfRequests = RedisClient.init().getLong(key);
-            return numberOfRequests;
-        } else {
-            final int numOfShards = RedisClient.init().getNumberOfShards(key);
-            final List<String> subKeys = IntStream.range(0, numOfShards).mapToObj(i -> String.format("%s:%s", key, i)).toList();
-            final Long sumOfRequests = RedisClient.init().sumLong(subKeys);
-            return sumOfRequests;
-        }
+        return RedisClient.init().sumOfRequests(key);
     }
 }
