@@ -57,6 +57,7 @@ application.
   - avoid single-key contention
   - reduce lock contention
   - support higher parallelism
+- Downstream user should be able to call `shardKey()` while application startup or in the runtime to change an existing key to a shard key.
 
 ## Implementation
 
