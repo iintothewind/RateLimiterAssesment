@@ -1,0 +1,21 @@
+<configuration>
+<appender name="console" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+        <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+    </encoder>
+    <filter class="ch.qos.logback.core.filter.EvaluatorFilter">
+        <evaluator>
+            <expression>
+                return formattedMessage.contains(".jpg") || formattedMessage.contains(".gif");
+            </expression>
+        </evaluator>
+        <onMatch>DENY</onMatch>
+    </filter>
+</appender>
+
+<root level="info">
+    <appender-ref ref="console" />
+</root>
+
+<logger name="org.apache.flink" level="WARN"/>
+</configuration>
